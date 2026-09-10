@@ -1,0 +1,5 @@
+# LAN Chat System - Dependencies
+# This project is designed to use Python 3 Standard Library only.
+# No external pip dependencies are strictly required!
+# (Optional test runner: pytest)
+pytest>=7.0.0

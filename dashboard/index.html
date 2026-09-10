@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN Chat System - Real-Time Multi-Client Communication</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for crisp modern technical typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <!-- TOP APPLICATION HEADER -->
+    <header class="app-header">
+        <div class="logo-area">
+            <div class="logo-icon">⚡</div>
+            <div class="logo-text">
+                <h1>LAN CHAT SYSTEM</h1>
+                <span class="sub-text">TCP/IP Socket Multi-Client Network</span>
+            </div>
+        </div>
+
+        <div class="network-badge-group">
+            <div class="net-card">
+                <span class="net-label">SERVER LAN IP</span>
+                <span class="net-val" id="display-lan-ip">Loading...</span>
+            </div>
+            <div class="net-card">
+                <span class="net-label">TCP PORT</span>
+                <span class="net-val" id="display-tcp-port">5555</span>
+            </div>
+            <div class="connection-status-pill offline" id="status-pill">
+                <span class="status-dot"></span>
+                <span id="status-text">DISCONNECTED</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <div class="main-layout">
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar">
+            <!-- USER CARD -->
+            <div class="sidebar-card user-card">
+                <div class="avatar" id="my-avatar">?</div>
+                <div class="user-details">
+                    <h3 id="my-username">Not Connected</h3>
+                    <span class="user-role" id="my-session-info">Standard TCP Socket Client</span>
+                </div>
+            </div>
+
+            <!-- ONLINE USERS PANEL -->
+            <div class="sidebar-card online-users-card">
+                <div class="card-header">
+                    <h4>ONLINE USERS (<span id="user-count">0</span>)</h4>
+                    <button class="icon-btn" id="btn-refresh-users" title="Refresh User List (/who)">🔄</button>
+                </div>
+                <div class="user-selector-container">
+                    <select id="user-select-dropdown" class="user-select-dropdown" title="Select a user to start private chat">
+                        <option value="">-- Select Person for Private Chat --</option>
+                    </select>
+                </div>
+                <ul class="users-list" id="users-list">
+                    <li class="empty-state">No active users</li>
+                </ul>
+            </div>
+
+            <!-- SESSION METRICS -->
+            <div class="sidebar-card metrics-card">
+                <h4>NETWORK SESSION STATS</h4>
+                <div class="metric-row">
+                    <span>Messages Sent</span>
+                    <strong id="metric-sent">0</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Messages Received</span>
+                    <strong id="metric-recv">0</strong>
+                </div>
+                <div class="metric-row">
+                    <span>Uptime</span>
+                    <strong id="metric-uptime">00:00:00</strong>
+                </div>
+            </div>
+
+            <button class="danger-btn hidden" id="btn-leave">Disconnect / Leave</button>
+        </aside>
+
+        <!-- CHAT AREA -->
+        <main class="chat-viewport">
+            <div class="chat-header">
+                <div class="channel-info">
+                    <span class="hash-symbol" id="channel-icon">#</span>
+                    <div>
+                        <h2 id="channel-title">Global LAN Broadcast</h2>
+                        <p class="channel-desc">Newline-framed TCP Byte Stream (<span id="active-target-desc">Broadcasting to all connected clients</span>)</p>
+                    </div>
+                </div>
+                <div class="chat-actions">
+                    <button class="tab-btn hidden" id="btn-clear-chat">Clear View</button>
+                </div>
+            </div>
+
+            <!-- DYNAMIC CHAT TABS BAR -->
+            <div class="chat-tabs-bar" id="chat-tabs-bar">
+                <button class="chat-tab active" data-target="global" id="tab-global">
+                    <span># Global Broadcast</span>
+                </button>
+            </div>
+
+            <!-- MESSAGES CONTAINER -->
+            <div class="messages-container" id="messages-container">
+                <div class="system-welcome-card">
+                    <h3>🌐 Welcome to LAN Chat System</h3>
+                    <p>Academic TCP/IP Socket Application Layer Communication.</p>
+                    <p>Select any online person from the list to start a dedicated <strong>Private Chat</strong>, or send files using 📎 attach.</p>
+                </div>
+            </div>
+
+            <!-- FILE PREVIEW BAR -->
+            <div class="file-preview-bar hidden" id="file-preview-bar">
+                <span class="file-preview-icon">📄</span>
+                <span class="file-preview-info" id="file-preview-info">selected_file.txt (0 KB)</span>
+                <button type="button" class="btn-remove-file" id="btn-remove-file" title="Remove attachment">✕</button>
+            </div>
+
+            <!-- CHAT INPUT BAR -->
+            <form class="chat-input-bar" id="chat-form">
+                <input type="file" id="file-input" style="display: none;">
+                <button type="button" class="attach-btn" id="btn-attach-file" title="Attach & Send File" disabled>📎</button>
+                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" disabled>
+                <button type="submit" id="btn-send" disabled>Send 🚀</button>
+            </form>
+        </main>
+    </div>
+
+    <!-- JOIN MODAL OVERLAY -->
+    <div class="modal-overlay" id="join-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>Join LAN Chat Network</h2>
+                <p>Connect your client socket to the TCP Server</p>
+            </div>
+            
+            <form id="join-form">
+                <div class="form-group">
+                    <label for="input-username">USERNAME</label>
+                    <input type="text" id="input-username" placeholder="e.g. Alice, Bob, CyberSecStudent" required maxlength="32">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="input-tcphost">SERVER HOST / IP</label>
+                        <input type="text" id="input-tcphost" value="127.0.0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="input-tcpport">TCP PORT</label>
+                        <input type="number" id="input-tcpport" value="5555" required>
+                    </div>
+                </div>
+
+                <div class="error-msg hidden" id="modal-error"></div>
+
+                <button type="submit" class="primary-btn" id="btn-join-submit">Connect to TCP Server</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
