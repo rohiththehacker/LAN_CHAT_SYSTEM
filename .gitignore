@@ -1,0 +1,41 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Pytest cache
+.pytest_cache/
+.cache/
+
+# Test coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# Uploaded files (generated at runtime)
+dashboard/uploads/*
+!dashboard/uploads/.gitkeep
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE-specific
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini

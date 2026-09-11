@@ -1,6 +1,6 @@
 /**
- * LAN Chat System - Client Dashboard Logic
- * Connects over HTTP to Web-Bridge, which interfaces directly with Python TCP Socket Server.
+ * LAN Chat System - WhatsApp & Instagram Inspired Dashboard Controller
+ * Bridges Browser UI to Raw TCP Socket Server over HTTP Web Bridge
  */
 
 // Application State
@@ -18,6 +18,7 @@ let activeTab = "global"; // "global" or username
 let conversations = { "global": [] }; // { "global": [...], "alice": [...] }
 let unreadCounts = {}; // { "alice": 2 }
 let selectedFile = null; // { name, size, dataB64 }
+let activeUsersList = []; // Array of usernames
 
 // DOM Elements
 const joinModal = document.getElementById("join-modal");
@@ -33,15 +34,20 @@ const myUsername = document.getElementById("my-username");
 const myAvatar = document.getElementById("my-avatar");
 const mySessionInfo = document.getElementById("my-session-info");
 
+const userSearchInput = document.getElementById("user-search-input");
 const userSelectDropdown = document.getElementById("user-select-dropdown");
 const usersList = document.getElementById("users-list");
 const userCount = document.getElementById("user-count");
 
-const chatTabsBar = document.getElementById("chat-tabs-bar");
+const globalThreadBtn = document.getElementById("global-thread-btn");
+const globalLastTime = document.getElementById("global-last-time");
+const globalLastMsg = document.getElementById("global-last-msg");
+
+const headerAvatar = document.getElementById("header-avatar");
 const channelTitle = document.getElementById("channel-title");
-const channelIcon = document.getElementById("channel-icon");
 const activeTargetDesc = document.getElementById("active-target-desc");
 
+const chatTabsBar = document.getElementById("chat-tabs-bar");
 const messagesContainer = document.getElementById("messages-container");
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
@@ -202,7 +208,6 @@ chatForm.addEventListener("submit", async (e) => {
     if (selectedFile) {
         try {
             btnSend.disabled = true;
-            btnSend.textContent = "Uploading...";
 
             const upRes = await fetch("/api/upload", {
                 method: "POST",
@@ -218,24 +223,20 @@ chatForm.addEventListener("submit", async (e) => {
                 const fileTag = `[FILE:${upData.filename}:${upData.url}:${upData.size}]`;
                 finalMsgText = rawText ? `${rawText}\n${fileTag}` : fileTag;
                 
-                // Clear selected file
                 selectedFile = null;
                 fileInput.value = "";
                 filePreviewBar.classList.add("hidden");
             } else {
                 appendSystemMessage(`Upload Error: ${upData.message}`);
                 btnSend.disabled = false;
-                btnSend.textContent = "Send 🚀";
                 return;
             }
         } catch (err) {
             appendSystemMessage("Failed to upload file to Web Bridge server.");
             btnSend.disabled = false;
-            btnSend.textContent = "Send 🚀";
             return;
         } finally {
             btnSend.disabled = false;
-            btnSend.textContent = "Send 🚀";
         }
     }
 
@@ -322,6 +323,9 @@ function parseIncomingProtocolMessage(rawMsg) {
     const parts = rawMsg.split(":", 2);
     const cmd = parts[0].toUpperCase ? parts[0].toUpperCase() : parts[0];
 
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
     if (cmd === "MSG") {
         // MSG:sender:text
         const sub = rawMsg.split(":", 2);
@@ -335,10 +339,13 @@ function parseIncomingProtocolMessage(rawMsg) {
             author: sender,
             text: text,
             type: sender === currentUsername ? "self" : "broadcast",
-            channel: "global"
+            channel: "global",
+            time: timeStr
         };
 
         addMessageToConversation("global", msgObj);
+        globalLastTime.textContent = timeStr;
+        globalLastMsg.textContent = `${sender}: ${cleanTextForPreview(text)}`;
 
     } else if (cmd === "PRIVATE") {
         // PRIVATE:sender:target:text
@@ -355,7 +362,8 @@ function parseIncomingProtocolMessage(rawMsg) {
             text: text,
             type: isSelf ? "self" : "private",
             tag: "PRIVATE MESSAGE",
-            channel: otherUser
+            channel: otherUser,
+            time: timeStr
         };
 
         if (!conversations[otherUser]) {
@@ -363,6 +371,7 @@ function parseIncomingProtocolMessage(rawMsg) {
         }
 
         addMessageToConversation(otherUser, msgObj);
+        renderUsersList();
 
     } else if (cmd === "JOIN") {
         const username = rawMsg.split(":")[1];
@@ -377,7 +386,8 @@ function parseIncomingProtocolMessage(rawMsg) {
     } else if (cmd === "WHOREPLY") {
         const usersStr = rawMsg.substring("WHOREPLY:".length);
         const users = usersStr ? usersStr.split(",") : [];
-        updateUsersList(users);
+        activeUsersList = users;
+        renderUsersList();
 
     } else if (cmd === "SYSTEM") {
         const text = rawMsg.substring("SYSTEM:".length);
@@ -387,6 +397,12 @@ function parseIncomingProtocolMessage(rawMsg) {
         const text = rawMsg.substring("ERROR:".length);
         addSystemMessageToActiveTab(`⚠️ Error: ${text}`);
     }
+}
+
+function cleanTextForPreview(text) {
+    if (!text) return "";
+    if (text.includes("[FILE:")) return "📄 File attachment";
+    return text;
 }
 
 function addMessageToConversation(channelKey, msgObj) {
@@ -400,6 +416,7 @@ function addMessageToConversation(channelKey, msgObj) {
     } else {
         unreadCounts[channelKey] = (unreadCounts[channelKey] || 0) + 1;
         renderTabs();
+        renderUsersList();
     }
 }
 
@@ -432,15 +449,18 @@ function switchTab(target) {
     activeTab = target;
     unreadCounts[target] = 0;
     renderTabs();
+    renderUsersList();
 
     if (target === "global") {
-        channelIcon.textContent = "#";
+        headerAvatar.textContent = "🌐";
         channelTitle.textContent = "Global LAN Broadcast";
-        activeTargetDesc.textContent = "Broadcasting to all connected clients";
+        activeTargetDesc.innerHTML = `<span class="status-dot-inline"></span> Direct TCP Stream Broadcast`;
+        globalThreadBtn.classList.add("active");
     } else {
-        channelIcon.textContent = "🔒";
-        channelTitle.textContent = `Private Chat with ${target}`;
-        activeTargetDesc.textContent = `Direct TCP socket private messaging with ${target}`;
+        headerAvatar.textContent = target.charAt(0).toUpperCase();
+        channelTitle.textContent = target;
+        activeTargetDesc.innerHTML = `<span class="status-dot-inline"></span> Online via TCP Socket`;
+        globalThreadBtn.classList.remove("active");
     }
 
     renderActiveMessages();
@@ -454,6 +474,7 @@ function closeTab(target, event) {
         switchTab("global");
     } else {
         renderTabs();
+        renderUsersList();
     }
 }
 
@@ -465,7 +486,7 @@ function renderTabs() {
     globalBtn.className = `chat-tab ${activeTab === "global" ? "active" : ""}`;
     const globalUnread = unreadCounts["global"] || 0;
     globalBtn.innerHTML = `
-        <span># Global Broadcast</span>
+        <span>🌐 # Global Broadcast</span>
         ${globalUnread > 0 ? `<span class="tab-unread-badge">${globalUnread}</span>` : ""}
     `;
     globalBtn.addEventListener("click", () => switchTab("global"));
@@ -496,23 +517,22 @@ function renderTabs() {
 function renderActiveMessages() {
     messagesContainer.innerHTML = "";
     
-    // Add Welcome banner if global tab is empty
     const msgs = conversations[activeTab] || [];
     if (activeTab === "global" && msgs.length === 0) {
         const welcomeCard = document.createElement("div");
         welcomeCard.className = "system-welcome-card";
         welcomeCard.innerHTML = `
-            <h3>🌐 Welcome to LAN Chat System</h3>
-            <p>Academic TCP/IP Socket Application Layer Communication.</p>
-            <p>Select any online person from the list to start a dedicated <strong>Private Chat</strong>, or send files using 📎 attach.</p>
+            <h3>💬 Welcome to LAN Chat</h3>
+            <p>Select any person from the sidebar or dropdown to start a sleek <strong>Private Direct Chat</strong>.</p>
+            <p>Send files instantly over Wi-Fi/LAN using the 📎 button.</p>
         `;
         messagesContainer.appendChild(welcomeCard);
     } else if (activeTab !== "global" && msgs.length === 0) {
         const pmCard = document.createElement("div");
         pmCard.className = "system-welcome-card";
         pmCard.innerHTML = `
-            <h3>🔒 Private Chat Channel</h3>
-            <p>Direct private communication thread with <strong>${escapeHtml(activeTab)}</strong> over raw TCP socket.</p>
+            <h3>🔒 Direct Private Chat</h3>
+            <p>End-to-end TCP socket private conversation thread with <strong>${escapeHtml(activeTab)}</strong>.</p>
         `;
         messagesContainer.appendChild(pmCard);
     }
@@ -520,6 +540,7 @@ function renderActiveMessages() {
     msgs.forEach(msgObj => renderSingleMessage(msgObj));
 }
 
+// --- RENDER WHATSAPP SPEECH BUBBLES ---
 function renderSingleMessage(msgObj) {
     const row = document.createElement("div");
 
@@ -528,20 +549,25 @@ function renderSingleMessage(msgObj) {
         row.innerHTML = `<div class="msg-body">${escapeHtml(msgObj.text)}</div>`;
     } else {
         row.className = `msg-row ${msgObj.type}`;
-        const now = new Date();
-        const timeStr = now.toTimeString().split(" ")[0];
-        let tagHtml = msgObj.tag ? `<span class="msg-tag pm">${msgObj.tag}</span>` : "";
+        
+        const isSelf = (msgObj.type === "self");
+        const timeStr = msgObj.time || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const pmTag = msgObj.tag ? `<span class="msg-pm-tag">${msgObj.tag}</span>` : "";
 
-        // Check if message text includes [FILE:filename:url:size]
-        const formattedBody = formatMessageTextWithFiles(msgObj.text);
+        const formattedContent = formatMessageTextWithFiles(msgObj.text);
 
         row.innerHTML = `
-            <div class="msg-meta">
-                <span class="msg-author">${escapeHtml(msgObj.author)}</span>
-                <span class="msg-time">${timeStr}</span>
-                ${tagHtml}
+            <div class="msg-bubble">
+                <div class="msg-header-line">
+                    <span class="msg-author-name">${escapeHtml(msgObj.author)}</span>
+                    ${pmTag}
+                </div>
+                <div class="msg-content-text">${formattedContent}</div>
+                <div class="msg-footer-line">
+                    <span class="msg-timestamp">${timeStr}</span>
+                    ${isSelf ? '<span class="msg-status-check">✓✓</span>' : ''}
+                </div>
             </div>
-            <div class="msg-body">${formattedBody}</div>
         `;
     }
 
@@ -549,7 +575,7 @@ function renderSingleMessage(msgObj) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// --- FILE CARD REGEX PARSER ---
+// --- FILE CARD PARSER ---
 function formatMessageTextWithFiles(rawText) {
     const fileRegex = /\[FILE:(.*?):(.*?):(\d+)\]/g;
     let match;
@@ -600,23 +626,25 @@ function renderFileCardHtml(filename, url, sizeBytes) {
     `;
 }
 
-// --- ONLINE USER LIST & DROPDOWN RENDERER ---
-function updateUsersList(users) {
+// --- WHATSAPP SIDEBAR THREAD LIST RENDERER ---
+function renderUsersList() {
+    const query = userSearchInput.value.toLowerCase().trim();
     usersList.innerHTML = "";
-    userCount.textContent = users.length;
+    userCount.textContent = activeUsersList.length;
 
-    // Update Dropdown options
-    userSelectDropdown.innerHTML = `<option value="">-- Select Person for Private Chat --</option>`;
+    // Reset dropdown
+    userSelectDropdown.innerHTML = `<option value="">-- Direct Message Person --</option>`;
 
-    if (users.length === 0) {
-        usersList.innerHTML = `<li class="empty-state">No active users</li>`;
+    const filtered = activeUsersList.filter(u => u.toLowerCase().includes(query));
+
+    if (filtered.length === 0) {
+        usersList.innerHTML = `<li class="empty-state">No active users found</li>`;
         return;
     }
 
-    users.forEach(u => {
+    filtered.forEach(u => {
         const isMe = (u === currentUsername);
 
-        // Add to Dropdown if not self
         if (!isMe) {
             const opt = document.createElement("option");
             opt.value = u;
@@ -624,18 +652,37 @@ function updateUsersList(users) {
             userSelectDropdown.appendChild(opt);
         }
 
-        // Add to Sidebar list
         const li = document.createElement("li");
+        li.className = `chat-thread-item ${activeTab === u ? "active" : ""}`;
+
+        // Get last message in conversation
+        const userMsgs = conversations[u] || [];
+        const lastMsgObj = userMsgs.length > 0 ? userMsgs[userMsgs.length - 1] : null;
+        const lastText = lastMsgObj ? cleanTextForPreview(lastMsgObj.text) : "Tap to start private chat";
+        const lastTime = lastMsgObj ? (lastMsgObj.time || "Active") : "Online";
+
+        const unreadCount = unreadCounts[u] || 0;
+        const unreadHtml = unreadCount > 0 ? `<span class="unread-pill">${unreadCount}</span>` : "";
+
         li.innerHTML = `
-            <span>🟢 ${escapeHtml(u)}</span>
-            <div class="user-actions">
-                ${isMe ? '<span class="badge-me">YOU</span>' : `<button type="button" class="user-chat-btn">💬 Chat</button>`}
+            <div class="user-thread-avatar">
+                <span>${u.charAt(0).toUpperCase()}</span>
+                <span class="user-status-dot"></span>
+            </div>
+            <div class="user-thread-details">
+                <div class="user-thread-top">
+                    <span class="user-thread-name">${escapeHtml(u)} ${isMe ? '(YOU)' : ''}</span>
+                    <span class="thread-time">${lastTime}</span>
+                </div>
+                <div class="user-thread-top" style="margin-top: 2px;">
+                    <span class="thread-sub">${escapeHtml(lastText)}</span>
+                    ${unreadHtml}
+                </div>
             </div>
         `;
 
         if (!isMe) {
-            const chatBtn = li.querySelector(".user-chat-btn");
-            chatBtn.addEventListener("click", () => {
+            li.addEventListener("click", () => {
                 openPrivateChat(u);
             });
         }
@@ -643,11 +690,17 @@ function updateUsersList(users) {
     });
 }
 
+globalThreadBtn.addEventListener("click", () => {
+    switchTab("global");
+});
+
+userSearchInput.addEventListener("input", () => renderUsersList());
+
 userSelectDropdown.addEventListener("change", (e) => {
     const target = e.target.value;
     if (target) {
         openPrivateChat(target);
-        userSelectDropdown.value = ""; // reset dropdown selection
+        userSelectDropdown.value = "";
     }
 });
 
@@ -679,6 +732,7 @@ function disconnectSession() {
     conversations = { "global": [] };
     unreadCounts = {};
     selectedFile = null;
+    activeUsersList = [];
 
     statusPill.className = "connection-status-pill offline";
     statusText.textContent = "DISCONNECTED";

@@ -17,6 +17,10 @@ MAX_USERNAME_LEN = 32
 MAX_MESSAGE_LEN = 1024
 DELIMITER = "\n"
 
+# Inactivity & Admin settings
+DEFAULT_INACTIVITY_TIMEOUT = 900  # 15 minutes in seconds (10-20 mins range)
+DEFAULT_ADMIN_KEY = "admin123"
+
 def get_lan_ip() -> str:
     """
     Utility function to discover the local machine's primary LAN IP address.

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAN Chat System - Admin Portal</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme admin-page">
+    <!-- ADMIN TOP BAR HEADER -->
+    <header class="app-header admin-header">
+        <div class="logo-area">
+            <div class="logo-icon admin-icon">🛡️</div>
+            <div class="logo-text">
+                <h1>LAN CHAT ADMIN PORTAL</h1>
+                <span class="sub-text">System Health & Client Operations</span>
+            </div>
+        </div>
+
+        <div class="network-badge-group">
+            <a href="index.html" class="nav-link-btn">💬 Open User Chat</a>
+            <button class="danger-btn" id="btn-admin-logout" style="margin:0;">Logout 🔒</button>
+        </div>
+    </header>
+
+    <!-- MAIN ADMIN CONTAINER -->
+    <main class="admin-container">
+        <!-- TOP KPI STAT CARDS -->
+        <section class="admin-kpi-grid">
+            <div class="kpi-card">
+                <span class="kpi-label">ACTIVE CLIENT SESSIONS</span>
+                <div class="kpi-value" id="kpi-active-clients">0</div>
+                <span class="kpi-sub">Connected via TCP / Web</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">TOTAL MESSAGES ROUTED</span>
+                <div class="kpi-value" id="kpi-routed-msgs">0</div>
+                <span class="kpi-sub">Packets processed</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">SERVER UPTIME</span>
+                <div class="kpi-value" id="kpi-server-uptime">00:00:00</div>
+                <span class="kpi-sub">Continuous execution</span>
+            </div>
+            <div class="kpi-card">
+                <span class="kpi-label">INACTIVITY TIMEOUT</span>
+                <div class="kpi-value" id="kpi-timeout-val">15m</div>
+                <span class="kpi-sub">Auto-prune threshold</span>
+            </div>
+        </section>
+
+        <!-- ADMIN CONTROLS SECTION -->
+        <section class="admin-actions-grid">
+            <!-- ANNOUNCEMENT BROADCAST BOX -->
+            <div class="admin-panel-card">
+                <h3>📢 Global System Announcement</h3>
+                <p class="panel-desc">Broadcast high-priority announcement to all connected clients</p>
+                <form id="broadcast-form" class="admin-form">
+                    <input type="text" id="input-broadcast-msg" placeholder="e.g. Server maintenance in 10 minutes..." required>
+                    <button type="submit" class="primary-btn">Broadcast Notice 🚀</button>
+                </form>
+                <div class="admin-feedback hidden" id="broadcast-feedback"></div>
+            </div>
+
+            <!-- INACTIVITY TIMEOUT CONFIGURATOR -->
+            <div class="admin-panel-card">
+                <h3>⚙️ Inactivity Timeout Configuration</h3>
+                <p class="panel-desc">Auto-disconnect clients sending no requests within timeout window</p>
+                <form id="timeout-config-form" class="admin-form">
+                    <select id="select-timeout" class="user-select-dropdown">
+                        <option value="300">5 Minutes Inactivity Limit</option>
+                        <option value="600">10 Minutes Inactivity Limit</option>
+                        <option value="900" selected>15 Minutes Inactivity Limit (Default)</option>
+                        <option value="1200">20 Minutes Inactivity Limit</option>
+                        <option value="0">Disabled (No Auto-Disconnect)</option>
+                    </select>
+                    <button type="submit" class="primary-btn">Save Timeout Setting 💾</button>
+                </form>
+                <div class="admin-feedback hidden" id="timeout-feedback"></div>
+            </div>
+        </section>
+
+        <!-- ACTIVE CLIENTS TABLE -->
+        <section class="admin-table-section">
+            <div class="table-header">
+                <h3>ACTIVE CLIENT REGISTRY (<span id="table-user-count">0</span>)</h3>
+                <button class="icon-btn" id="btn-admin-refresh" title="Refresh Live Table">🔄</button>
+            </div>
+            <div class="table-wrapper">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>USERNAME</th>
+                            <th>SOCKET / ADDRESS</th>
+                            <th>CONNECTED DURATION</th>
+                            <th>IDLE DURATION</th>
+                            <th>STATUS</th>
+                            <th>ACTION</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clients-table-body">
+                        <tr>
+                            <td colspan="6" class="empty-state">No active clients connected</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <!-- ADMIN LOGIN MODAL OVERLAY -->
+    <div class="modal-overlay" id="admin-login-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>🛡️ Admin Portal Authentication</h2>
+                <p>Enter administrative access key to unlock portal</p>
+            </div>
+            
+            <form id="admin-login-form">
+                <div class="form-group">
+                    <label for="input-admin-key">ADMIN ACCESS KEY</label>
+                    <input type="password" id="input-admin-key" value="admin123" placeholder="Default: admin123" required>
+                </div>
+
+                <div class="error-msg hidden" id="admin-modal-error"></div>
+
+                <button type="submit" class="primary-btn" id="btn-admin-login-submit">Unlock Admin Portal</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

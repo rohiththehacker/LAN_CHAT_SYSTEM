@@ -10,11 +10,11 @@ import unittest
 import threading
 import urllib.request
 from http.server import HTTPServer
-from web_bridge.bridge import BridgeHTTPRequestHandler, Session, SESSIONS, SESSIONS_LOCK, UPLOADS_DIR
+from web_bridge.bridge import BridgeHTTPRequestHandler, Session, SESSIONS, SESSIONS_LOCK, UPLOADS_DIR, ReusableHTTPServer
 from server.server import ChatServer
 
-TEST_TCP_PORT = 5558
-TEST_WEB_PORT = 8089
+TEST_TCP_PORT = 5568
+TEST_WEB_PORT = 8098
 
 class TestWebBridgeUpload(unittest.TestCase):
     @classmethod
@@ -26,7 +26,7 @@ class TestWebBridgeUpload(unittest.TestCase):
         time.sleep(0.3)
 
         # Start Web Bridge HTTP server
-        cls.web_server = HTTPServer(("127.0.0.1", TEST_WEB_PORT), BridgeHTTPRequestHandler)
+        cls.web_server = ReusableHTTPServer(("127.0.0.1", TEST_WEB_PORT), BridgeHTTPRequestHandler)
         cls.web_thread = threading.Thread(target=cls.web_server.serve_forever, daemon=True)
         cls.web_thread.start()
         time.sleep(0.3)

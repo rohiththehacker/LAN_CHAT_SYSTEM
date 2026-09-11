@@ -14,6 +14,7 @@ from typing import Optional
 from server.config import (
     DEFAULT_HOST,
     DEFAULT_TCP_PORT,
+    DEFAULT_INACTIVITY_TIMEOUT,
     BUFFER_SIZE,
     ENCODING,
     get_lan_ip,
@@ -47,7 +48,9 @@ class ChatServer:
         self.port = port
         self.server_socket: Optional[socket.socket] = None
         self.client_manager = ClientManager()
+        self.inactivity_timeout = DEFAULT_INACTIVITY_TIMEOUT
         self.is_running = False
+        self._monitor_thread: Optional[threading.Thread] = None
 
     def start(self):
         """Initializes server socket, binds, listens, and enters main accept loop."""
@@ -60,12 +63,17 @@ class ChatServer:
             self.server_socket.listen(10)
             self.is_running = True
 
+            # Start inactivity monitor thread
+            self._monitor_thread = threading.Thread(target=self._inactivity_monitor_loop, daemon=True)
+            self._monitor_thread.start()
+
             lan_ip = get_lan_ip()
             logger.info("=" * 60)
             logger.info(f" TCP CHAT SERVER STARTED SUCCESSFULLY")
             logger.info(f" Listening on Interface : {self.host}:{self.port}")
             logger.info(f" Local Access           : localhost:{self.port}")
             logger.info(f" LAN Network Access     : {lan_ip}:{self.port}")
+            logger.info(f" Inactivity Timeout     : {self.inactivity_timeout}s ({int(self.inactivity_timeout/60)} mins)")
             logger.info("=" * 60)
 
             while self.is_running:
@@ -126,7 +134,7 @@ class ChatServer:
                                 client_socket.sendall(encode_error("Already joined.").encode(ENCODING))
                                 continue
 
-                            success, msg = self.client_manager.register_client(new_user, client_socket)
+                            success, msg = self.client_manager.register_client(new_user, client_socket, client_address)
                             if not success:
                                 client_socket.sendall(encode_error(msg).encode(ENCODING))
                                 logger.warning(f"Registration failed for '{new_user}' from {client_address}: {msg}")
@@ -147,6 +155,9 @@ class ChatServer:
                             if username is None:
                                 client_socket.sendall(encode_error("Must send JOIN:<username> first.").encode(ENCODING))
                                 continue
+
+                            # Update activity timestamp for active user
+                            self.client_manager.update_activity(username)
 
                             if cmd == "MSG":
                                 text = args[1]
@@ -194,6 +205,26 @@ class ChatServer:
                 client_socket.close()
             except Exception:
                 pass
+
+    def _inactivity_monitor_loop(self):
+        """Background thread loop checking for inactive clients every 15 seconds."""
+        import time
+        while self.is_running:
+            time.sleep(15)
+            if not self.is_running:
+                break
+            if self.inactivity_timeout > 0:
+                expired = self.client_manager.cleanup_inactive_clients(self.inactivity_timeout)
+                for user, sock in expired:
+                    mins = int(self.inactivity_timeout / 60)
+                    logger.info(f"Disconnecting user '{user}' due to inactivity timeout ({mins} mins idle).")
+                    try:
+                        disconnect_msg = encode_system(f"Disconnected due to inactivity ({mins} mins idle).")
+                        sock.sendall(disconnect_msg.encode(ENCODING))
+                        sock.close()
+                    except Exception:
+                        pass
+                    self.client_manager.broadcast(encode_leave(user))
 
     def stop(self):
         """Stops the server socket gracefully."""

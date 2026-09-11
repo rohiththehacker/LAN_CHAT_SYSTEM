@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LAN Chat System - Real-Time Multi-Client Communication</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Google Fonts for crisp modern technical typography -->
+    <!-- Google Fonts for crisp modern typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
-<body class="dark-theme">
+<body class="dark-theme whatsapp-style">
     <!-- TOP APPLICATION HEADER -->
     <header class="app-header">
         <div class="logo-area">
-            <div class="logo-icon">⚡</div>
+            <div class="logo-icon">💬</div>
             <div class="logo-text">
                 <h1>LAN CHAT SYSTEM</h1>
-                <span class="sub-text">TCP/IP Socket Multi-Client Network</span>
+                <span class="sub-text">TCP/IP Socket Network</span>
             </div>
         </div>
 
@@ -39,42 +39,66 @@
 
     <!-- MAIN CONTAINER -->
     <div class="main-layout">
-        <!-- LEFT SIDEBAR -->
+        <!-- LEFT SIDEBAR (WHATSAPP CHATS PANEL) -->
         <aside class="sidebar">
-            <!-- USER CARD -->
+            <!-- USER PROFILE HEADER -->
             <div class="sidebar-card user-card">
-                <div class="avatar" id="my-avatar">?</div>
+                <div class="avatar-wrapper">
+                    <div class="avatar" id="my-avatar">?</div>
+                    <span class="online-indicator"></span>
+                </div>
                 <div class="user-details">
                     <h3 id="my-username">Not Connected</h3>
                     <span class="user-role" id="my-session-info">Standard TCP Socket Client</span>
                 </div>
             </div>
 
-            <!-- ONLINE USERS PANEL -->
-            <div class="sidebar-card online-users-card">
-                <div class="card-header">
-                    <h4>ONLINE USERS (<span id="user-count">0</span>)</h4>
-                    <button class="icon-btn" id="btn-refresh-users" title="Refresh User List (/who)">🔄</button>
+            <!-- SEARCH BAR & QUICK SELECTOR -->
+            <div class="search-bar-container">
+                <div class="search-input-wrapper">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" id="user-search-input" placeholder="Search or select chat..." autocomplete="off">
                 </div>
                 <div class="user-selector-container">
                     <select id="user-select-dropdown" class="user-select-dropdown" title="Select a user to start private chat">
-                        <option value="">-- Select Person for Private Chat --</option>
+                        <option value="">-- Direct Message Person --</option>
                     </select>
                 </div>
+            </div>
+
+            <!-- CHATS THREAD LIST (WHATSAPP STYLE) -->
+            <div class="sidebar-card online-users-card">
+                <div class="card-header">
+                    <h4>CHATS & ONLINE CLIENTS (<span id="user-count">0</span>)</h4>
+                    <button class="icon-btn" id="btn-refresh-users" title="Refresh User List (/who)">🔄</button>
+                </div>
+                
+                <!-- GLOBAL BROADCAST THREAD CARD -->
+                <div class="global-thread-card active" id="global-thread-btn">
+                    <div class="thread-avatar">🌐</div>
+                    <div class="thread-info">
+                        <div class="thread-top">
+                            <span class="thread-name"># Global Broadcast</span>
+                            <span class="thread-time" id="global-last-time">Live</span>
+                        </div>
+                        <span class="thread-sub" id="global-last-msg">Broadcasting to all LAN clients</span>
+                    </div>
+                </div>
+
                 <ul class="users-list" id="users-list">
-                    <li class="empty-state">No active users</li>
+                    <li class="empty-state">No active users online</li>
                 </ul>
             </div>
 
-            <!-- SESSION METRICS -->
+            <!-- SESSION METRICS (COMPACT) -->
             <div class="sidebar-card metrics-card">
-                <h4>NETWORK SESSION STATS</h4>
+                <h4>SESSION STATS</h4>
                 <div class="metric-row">
-                    <span>Messages Sent</span>
+                    <span>Sent</span>
                     <strong id="metric-sent">0</strong>
                 </div>
                 <div class="metric-row">
-                    <span>Messages Received</span>
+                    <span>Received</span>
                     <strong id="metric-recv">0</strong>
                 </div>
                 <div class="metric-row">
@@ -86,14 +110,15 @@
             <button class="danger-btn hidden" id="btn-leave">Disconnect / Leave</button>
         </aside>
 
-        <!-- CHAT AREA -->
+        <!-- CHAT VIEWPORT (RIGHT CONVERSATION WINDOW) -->
         <main class="chat-viewport">
+            <!-- CHAT TOP HEADER (WHATSAPP STYLE) -->
             <div class="chat-header">
                 <div class="channel-info">
-                    <span class="hash-symbol" id="channel-icon">#</span>
-                    <div>
+                    <div class="chat-header-avatar" id="header-avatar">🌐</div>
+                    <div class="chat-header-details">
                         <h2 id="channel-title">Global LAN Broadcast</h2>
-                        <p class="channel-desc">Newline-framed TCP Byte Stream (<span id="active-target-desc">Broadcasting to all connected clients</span>)</p>
+                        <p class="channel-desc" id="active-target-desc"><span class="status-dot-inline"></span> Direct TCP Stream Broadcast</p>
                     </div>
                 </div>
                 <div class="chat-actions">
@@ -104,16 +129,16 @@
             <!-- DYNAMIC CHAT TABS BAR -->
             <div class="chat-tabs-bar" id="chat-tabs-bar">
                 <button class="chat-tab active" data-target="global" id="tab-global">
-                    <span># Global Broadcast</span>
+                    <span>🌐 # Global Broadcast</span>
                 </button>
             </div>
 
-            <!-- MESSAGES CONTAINER -->
+            <!-- MESSAGES CONTAINER (WHATSAPP SPEECH BUBBLES) -->
             <div class="messages-container" id="messages-container">
                 <div class="system-welcome-card">
-                    <h3>🌐 Welcome to LAN Chat System</h3>
-                    <p>Academic TCP/IP Socket Application Layer Communication.</p>
-                    <p>Select any online person from the list to start a dedicated <strong>Private Chat</strong>, or send files using 📎 attach.</p>
+                    <h3>💬 Welcome to LAN Chat</h3>
+                    <p>Select any person from the sidebar or dropdown to start a sleek <strong>Private Direct Chat</strong>.</p>
+                    <p>Send files instantly over Wi-Fi/LAN using the 📎 button.</p>
                 </div>
             </div>
 
@@ -124,12 +149,14 @@
                 <button type="button" class="btn-remove-file" id="btn-remove-file" title="Remove attachment">✕</button>
             </div>
 
-            <!-- CHAT INPUT BAR -->
+            <!-- CHAT INPUT BAR (WHATSAPP ROUNDED INPUT FOOTER) -->
             <form class="chat-input-bar" id="chat-form">
                 <input type="file" id="file-input" style="display: none;">
-                <button type="button" class="attach-btn" id="btn-attach-file" title="Attach & Send File" disabled>📎</button>
-                <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" disabled>
-                <button type="submit" id="btn-send" disabled>Send 🚀</button>
+                <button type="button" class="attach-btn" id="btn-attach-file" title="Attach File" disabled>📎</button>
+                <div class="input-wrapper">
+                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" disabled>
+                </div>
+                <button type="submit" class="send-btn" id="btn-send" disabled title="Send Message">➤</button>
             </form>
         </main>
     </div>
@@ -139,13 +166,13 @@
         <div class="modal-card">
             <div class="modal-header">
                 <h2>Join LAN Chat Network</h2>
-                <p>Connect your client socket to the TCP Server</p>
+                <p>Connect client socket to the TCP Server</p>
             </div>
             
             <form id="join-form">
                 <div class="form-group">
                     <label for="input-username">USERNAME</label>
-                    <input type="text" id="input-username" placeholder="e.g. Alice, Bob, CyberSecStudent" required maxlength="32">
+                    <input type="text" id="input-username" placeholder="e.g. Alice, Bob, CyberSec" required maxlength="32">
                 </div>
 
                 <div class="form-row">

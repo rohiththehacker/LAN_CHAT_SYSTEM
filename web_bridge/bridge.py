@@ -1,13 +1,14 @@
 """
-Web-to-TCP Bridge & Local Dashboard HTTP Server.
+Web-to-TCP Bridge & Local Dashboard HTTP Server with Inactivity Monitoring & Admin Portal.
 
 Hosts the Web Dashboard on 0.0.0.0:8080 and bridges browser HTTP requests to
 genuine raw TCP socket connections on the Python Chat Server (0.0.0.0:5555).
-Uses standard Python library (http.server, socket, threading, queue).
+Includes inactivity timeout auto-pruning and admin management REST APIs.
 """
 
 import os
 import sys
+import time
 import json
 import uuid
 import queue
@@ -15,12 +16,14 @@ import socket
 import threading
 import logging
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from server.config import (
     DEFAULT_HOST,
     DEFAULT_TCP_PORT,
     DEFAULT_WEB_PORT,
+    DEFAULT_INACTIVITY_TIMEOUT,
+    DEFAULT_ADMIN_KEY,
     BUFFER_SIZE,
     ENCODING,
     get_lan_ip,
@@ -38,9 +41,17 @@ os.makedirs(UPLOADS_DIR, exist_ok=True)
 SESSIONS: Dict[str, Dict[str, Any]] = {}
 SESSIONS_LOCK = threading.Lock()
 
+# Global Admin State
+ADMIN_SETTINGS = {
+    "key": DEFAULT_ADMIN_KEY,
+    "timeout_seconds": DEFAULT_INACTIVITY_TIMEOUT,
+    "start_time": time.time(),
+    "messages_routed": 0
+}
+
 
 class Session:
-    """Represents a Web client's dedicated underlying TCP socket client."""
+    """Represents a Web client's dedicated underlying TCP socket client with activity monitoring."""
     def __init__(self, username: str, tcp_host: str, tcp_port: int):
         self.session_id = str(uuid.uuid4())
         self.username = username
@@ -51,16 +62,17 @@ class Session:
         self.is_connected = False
         self.buffer = StreamBuffer()
         self.receiver_thread = None
+        self.connected_at = time.time()
+        self.last_activity = time.time()
 
     def connect(self) -> tuple[bool, str]:
         try:
             self.sock.connect((self.tcp_host, self.tcp_port))
-            # Send JOIN request over TCP socket
             join_cmd = f"JOIN:{self.username}\n"
             self.sock.sendall(join_cmd.encode(ENCODING))
             self.is_connected = True
+            self.last_activity = time.time()
 
-            # Start background reader thread for this TCP socket
             self.receiver_thread = threading.Thread(target=self._read_loop, daemon=True)
             self.receiver_thread.start()
             return True, "Connected to TCP server"
@@ -91,14 +103,19 @@ class Session:
             if not raw_command.endswith("\n"):
                 raw_command += "\n"
             self.sock.sendall(raw_command.encode(ENCODING))
+            self.last_activity = time.time()
+            with SESSIONS_LOCK:
+                ADMIN_SETTINGS["messages_routed"] += 1
             return True
         except Exception:
             self.is_connected = False
             return False
 
-    def close(self):
+    def close(self, reason: str = "LEAVE"):
         self.is_connected = False
         try:
+            if reason == "KICK":
+                self.send_command(f"SYSTEM:You were kicked by server administrator.\n")
             self.send_command(f"LEAVE:{self.username}\n")
             self.sock.close()
         except Exception:
@@ -119,11 +136,14 @@ class BridgeHTTPRequestHandler(SimpleHTTPRequestHandler):
                 "lan_ip": lan_ip,
                 "tcp_port": DEFAULT_TCP_PORT,
                 "web_port": DEFAULT_WEB_PORT,
+                "inactivity_timeout": ADMIN_SETTINGS["timeout_seconds"],
             })
         elif self.path.startswith("/api/poll"):
             self._handle_poll()
+        elif self.path.startswith("/api/admin/stats"):
+            self._handle_admin_stats()
         else:
-            # Serve dashboard static files (index.html, style.css, app.js)
+            # Serve dashboard static files (index.html, style.css, app.js, admin.html, admin.js)
             super().do_GET()
 
     def do_POST(self):
@@ -227,8 +247,102 @@ class BridgeHTTPRequestHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 self._send_json({"status": "error", "message": f"Upload failed: {str(e)}"}, status=500)
 
+        # --- ADMIN PORTAL API ENDPOINTS ---
+        elif self.path == "/api/admin/login":
+            key = data.get("admin_key", "")
+            if key == ADMIN_SETTINGS["key"]:
+                self._send_json({"status": "ok", "message": "Authenticated"})
+            else:
+                self._send_json({"status": "error", "message": "Invalid Admin Access Key"}, status=401)
+
+        elif self.path == "/api/admin/kick":
+            if not self._check_admin_auth(data):
+                return
+            target_username = data.get("username")
+            kicked = False
+
+            with SESSIONS_LOCK:
+                matching_ids = [sid for sid, s in SESSIONS.items() if s.username == target_username]
+                for sid in matching_ids:
+                    s = SESSIONS.pop(sid)
+                    s.close(reason="KICK")
+                    kicked = True
+
+            if kicked:
+                logger.info(f"Admin kicked client '{target_username}'")
+                self._send_json({"status": "ok", "message": f"User '{target_username}' kicked"})
+            else:
+                self._send_json({"status": "error", "message": f"User '{target_username}' not found"}, status=444)
+
+        elif self.path == "/api/admin/broadcast":
+            if not self._check_admin_auth(data):
+                return
+            announcement = data.get("message", "").strip()
+            if not announcement:
+                self._send_json({"status": "error", "message": "Message empty"}, status=400)
+                return
+
+            broadcast_msg = f"SYSTEM:📢 Admin Announcement: {announcement}"
+            count = 0
+            with SESSIONS_LOCK:
+                for sess in SESSIONS.values():
+                    if sess.is_connected:
+                        sess.msg_queue.put(broadcast_msg)
+                        count += 1
+
+            self._send_json({"status": "ok", "message": f"Broadcast sent to {count} sessions"})
+
+        elif self.path == "/api/admin/config":
+            if not self._check_admin_auth(data):
+                return
+            new_timeout = int(data.get("timeout_seconds", 900))
+            ADMIN_SETTINGS["timeout_seconds"] = new_timeout
+            logger.info(f"Admin updated inactivity timeout threshold to {new_timeout}s")
+            self._send_json({"status": "ok", "timeout_seconds": new_timeout})
+
         else:
             self._send_json({"status": "error", "message": "Not found"}, status=404)
+
+    def _check_admin_auth(self, data: dict) -> bool:
+        key = data.get("admin_key", "")
+        if key != ADMIN_SETTINGS["key"]:
+            self._send_json({"status": "error", "message": "Unauthorized Admin Request"}, status=401)
+            return False
+        return True
+
+    def _handle_admin_stats(self):
+        query = self.path.split("?", 1)[-1] if "?" in self.path else ""
+        key = ""
+        for q in query.split("&"):
+            if q.startswith("admin_key="):
+                key = q.split("=", 1)[1]
+
+        if key != ADMIN_SETTINGS["key"]:
+            self._send_json({"status": "error", "message": "Unauthorized Admin Request"}, status=401)
+            return
+
+        now = time.time()
+        clients = []
+
+        with SESSIONS_LOCK:
+            for sid, sess in SESSIONS.items():
+                clients.append({
+                    "session_id": sid,
+                    "username": sess.username,
+                    "tcp_address": f"{sess.tcp_host}:{sess.tcp_port}",
+                    "connected_seconds": int(now - sess.connected_at),
+                    "idle_seconds": int(now - sess.last_activity),
+                    "is_connected": sess.is_connected
+                })
+
+            self._send_json({
+                "status": "ok",
+                "active_sessions": len(SESSIONS),
+                "messages_routed": ADMIN_SETTINGS["messages_routed"],
+                "uptime_seconds": int(now - ADMIN_SETTINGS["start_time"]),
+                "inactivity_timeout": ADMIN_SETTINGS["timeout_seconds"],
+                "clients": clients
+            })
 
     def _handle_poll(self):
         query = self.path.split("?", 1)[-1] if "?" in self.path else ""
@@ -244,8 +358,20 @@ class BridgeHTTPRequestHandler(SimpleHTTPRequestHandler):
             self._send_json({"status": "error", "message": "Invalid session"}, status=401)
             return
 
+        now = time.time()
+        # Inactivity auto-pruning check
+        timeout = ADMIN_SETTINGS["timeout_seconds"]
+        if timeout > 0 and (now - sess.last_activity) > timeout:
+            sess.msg_queue.put(f"SYSTEM:Disconnected due to inactivity ({int(timeout/60)} mins idle).")
+            sess.close()
+            with SESSIONS_LOCK:
+                SESSIONS.pop(session_id, None)
+            self._send_json({"status": "ok", "is_connected": False, "messages": ["SYSTEM:Disconnected due to inactivity."]})
+            return
+
+        sess.last_activity = now
+
         messages = []
-        # Non-blocking collect queued protocol messages
         while not sess.msg_queue.empty():
             try:
                 messages.append(sess.msg_queue.get_nowait())
@@ -268,19 +394,23 @@ class BridgeHTTPRequestHandler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def log_message(self, format, *args):
-        # Quiet standard HTTP request logs to keep terminal readable
         pass
+
+
+class ReusableHTTPServer(HTTPServer):
+    allow_reuse_address = True
 
 
 def run_bridge(web_port: int = DEFAULT_WEB_PORT):
     server_address = (DEFAULT_HOST, web_port)
-    httpd = HTTPServer(server_address, BridgeHTTPRequestHandler)
+    httpd = ReusableHTTPServer(server_address, BridgeHTTPRequestHandler)
     lan_ip = get_lan_ip()
     
     logger.info("=" * 60)
     logger.info(" WEB DASHBOARD BRIDGE STARTED")
     logger.info(f" Local Browser Access : http://localhost:{web_port}")
     logger.info(f" LAN Network Access   : http://{lan_ip}:{web_port}")
+    logger.info(f" Admin Portal Access  : http://localhost:{web_port}/admin.html")
     logger.info("=" * 60)
 
     try:
